@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Instrument_Sans, Bricolage_Grotesque } from "next/font/google";
 import { Toaster } from "sonner";
 import AuthProvider from "@/components/providers/AuthProvider";
+import { RouteLoader } from "@/components/ui/RouteLoader";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({ 
@@ -28,8 +29,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${instrumentSans.variable} ${bricolageGrotesque.variable} font-sans antialiased min-h-screen bg-background text-foreground flex flex-col overflow-y-scroll`}>
+    <html lang="en" suppressHydrationWarning>
+
+      <body className={`${instrumentSans.variable} ${bricolageGrotesque.variable} font-sans antialiased min-h-screen bg-background text-foreground flex flex-col overflow-y-scroll`} suppressHydrationWarning>
+        <RouteLoader />
         <AuthProvider>
           {children}
         </AuthProvider>

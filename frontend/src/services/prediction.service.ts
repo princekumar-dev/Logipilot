@@ -1,6 +1,4 @@
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+import api from './api';
 
 export interface PredictionFactor {
   name: string;
@@ -11,18 +9,24 @@ export interface PredictionResult {
   shipmentId: string;
   delayProbability: number;
   predictedDelayMinutes: number;
-  predictedETA: string; // ISO date string
+  predictedETA: string;
   riskScore: number;
   confidence: number;
   factors: PredictionFactor[];
 }
 
+export interface BatchPredictionResult {
+  predictions: (PredictionResult | { shipmentId: string; error: string })[];
+}
+
 export const predictionService = {
   getPrediction: async (shipmentId: string): Promise<PredictionResult> => {
-    // We can call any of the routes since they all point to the same controller that generates the full object
-    const response = await axios.get(`${API_URL}/predictions/delay/${shipmentId}`, {
-      withCredentials: true
-    });
+    const response = await api.get(`/predictions/delay/${shipmentId}`);
+    return response.data;
+  },
+
+  getBatchPredictions: async (shipmentIds: string[]): Promise<BatchPredictionResult> => {
+    const response = await api.post<BatchPredictionResult>('/predictions/batch', { shipmentIds });
     return response.data;
   }
 };

@@ -1,15 +1,21 @@
 'use client';
 
-import { useState } from 'react';
-import { Home, Package, Map, Bell, Truck, LayoutDashboard, BarChart3, Search } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Home, Package, Map, Bell, Truck, LayoutDashboard, BarChart3, Search, Calendar, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 export function BottomNav() {
   const pathname = usePathname();
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNavigatingTo(null);
+  }, [pathname]);
   
   const isDriverContext = pathname === '/driver' || pathname.startsWith('/driver/');
 
@@ -53,12 +59,22 @@ export function BottomNav() {
           {/* Render Nav Items */}
           {navItems.map((item, index) => {
             const isActive = pathname === item.href || (item.href !== '/' && item.href !== '/driver' && pathname.startsWith(item.href));
+            const isNavigating = navigatingTo === item.href;
             
             return (
               <div key={item.label} className="flex items-center">
-                <Link href={item.href} className="relative flex flex-col items-center justify-center gap-1 w-14 group">
+                <Link
+                  href={item.href}
+                  prefetch={true}
+                  onClick={() => { if (!isActive) setNavigatingTo(item.href); }}
+                  className="relative flex flex-col items-center justify-center gap-1 w-14 group"
+                >
                   <div className={`relative flex items-center justify-center w-10 h-10 transition-all duration-300 ${isActive ? 'text-[#ff385c]' : 'text-[#6a6a6a] hover:text-[#222222]'}`}>
-                    <item.icon className="w-6 h-6 relative z-10" strokeWidth={isActive ? 2.5 : 2} />
+                    {isNavigating && !isActive ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <item.icon className="w-6 h-6 relative z-10" strokeWidth={isActive ? 2.5 : 2} />
+                    )}
                   </div>
                   <span className={`text-[10px] font-bold tracking-wide transition-colors ${isActive ? 'text-[#ff385c]' : 'text-[#6a6a6a]'}`}>
                     {item.label}
@@ -74,7 +90,6 @@ export function BottomNav() {
 
           {/* Center FAB */}
           <div className="absolute left-1/2 top-[-24px] -translate-x-1/2 flex items-center justify-center">
-            {/* The Floating Action Button */}
             <button 
               onClick={() => setIsSearchExpanded(true)} 
               className="relative w-[50px] h-[50px] bg-primary hover:bg-[#e00b3f] rounded-full flex items-center justify-center shadow-[0_4px_12px_rgba(255,56,92,0.3)] transition-transform hover:scale-105 active:scale-95"
@@ -86,53 +101,38 @@ export function BottomNav() {
       </div>
 
       {/* Search Modal */}
-      <AnimatePresence>
-        {isSearchExpanded && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/25 z-[100]" 
-              onClick={() => setIsSearchExpanded(false)} 
-            />
-            <motion.div 
-              initial={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }} 
-              animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }} 
-              exit={{ opacity: 0, y: 20, scale: 0.95, x: "-50%" }}
-              transition={{ duration: 0.2 }}
-              className="fixed bottom-[110px] left-1/2 w-[90%] max-w-[440px] bg-white rounded-[32px] shadow-2xl z-[110] flex items-center border border-[#dddddd] overflow-hidden font-sans"
-            >
-              <div className="flex flex-col w-full items-stretch py-2">
-                <div className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-[#f7f7f7] cursor-pointer transition-colors relative group">
-                  <span className="text-[12px] font-bold text-[#222222]">Route</span>
-                  <input type="text" placeholder="Search drops or routes" className="bg-transparent border-none outline-none text-[14px] text-[#222222] placeholder:text-[#6a6a6a] w-full" autoFocus />
-                  <div className="absolute bottom-0 left-6 right-6 h-px bg-[#dddddd]"></div>
-                </div>
-
-                <div className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-[#f7f7f7] cursor-pointer transition-colors relative group">
-                  <span className="text-[12px] font-bold text-[#222222]">Date</span>
-                  <input type="text" placeholder="Add dates" className="bg-transparent border-none outline-none text-[14px] text-[#222222] placeholder:text-[#6a6a6a] w-full" />
-                  <div className="absolute bottom-0 left-6 right-6 h-px bg-[#dddddd]"></div>
-                </div>
-
-                <div className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-[#f7f7f7] cursor-pointer transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 mr-4">
-                      <span className="text-[12px] font-bold text-[#222222] block">Cargo</span>
-                      <input type="text" placeholder="Add details" className="bg-transparent border-none outline-none text-[14px] text-[#222222] placeholder:text-[#6a6a6a] w-full" />
-                    </div>
-                    <button onClick={handleSearch} className="h-12 w-12 bg-primary hover:bg-[#e00b3f] text-white rounded-full flex items-center justify-center gap-2 font-bold transition-colors shrink-0">
-                      <Search className="w-4 h-4 stroke-[3]" />
-                    </button>
-                  </div>
-                </div>
+      {isSearchExpanded && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/25 z-[100] animate-in fade-in duration-200" 
+            onClick={() => setIsSearchExpanded(false)} 
+          />
+          <div className="fixed bottom-[110px] left-1/2 -translate-x-1/2 w-[90%] max-w-[440px] bg-white rounded-[32px] shadow-2xl z-[110] flex items-center border border-[#dddddd] overflow-hidden font-sans animate-search-popup" style={{ transformOrigin: 'bottom center' }}>
+            <div className="flex flex-col w-full items-stretch py-2">
+              <div className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-[#f7f7f7] cursor-pointer transition-colors relative group">
+                <span className="text-[12px] font-bold text-[#222222]">Route</span>
+                <input type="text" placeholder="Search drops or routes" className="bg-transparent border-none outline-none text-[14px] text-[#222222] placeholder:text-[#6a6a6a] w-full" autoFocus />
+                <div className="absolute bottom-0 left-6 right-6 h-px bg-[#dddddd]"></div>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+
+              <div className="flex-1 flex flex-col justify-center px-6 py-4 hover:bg-[#f7f7f7] cursor-pointer transition-colors relative group" onClick={() => dateInputRef.current?.showPicker()}>
+                <span className="text-[12px] font-bold text-[#222222]">Date</span>
+                <div className="flex items-center justify-between">
+                  <input type="text" placeholder="Add dates" value={selectedDate} readOnly className="bg-transparent border-none outline-none text-[14px] text-[#222222] placeholder:text-[#6a6a6a] w-full cursor-pointer" />
+                  <Calendar className="w-5 h-5 text-[#6a6a6a] shrink-0 ml-2" />
+                </div>
+                <input ref={dateInputRef} type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="absolute inset-0 opacity-0 pointer-events-none" />
+              </div>
+
+              <div className="px-6 py-3">
+                <button onClick={handleSearch} className="w-full h-12 bg-primary hover:bg-[#e00b3f] text-white rounded-full flex items-center justify-center gap-2 font-bold transition-colors">
+                  <Search className="w-4 h-4 stroke-[3]" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

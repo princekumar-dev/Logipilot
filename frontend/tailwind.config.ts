@@ -73,6 +73,15 @@ export default {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		keyframes: {
+  			'search-popup': {
+  				'0%': { opacity: '0', transform: 'translateX(-50%) translateY(46px) scale(0.9)' },
+  				'100%': { opacity: '1', transform: 'translateX(-50%) translateY(0) scale(1)' },
+  			},
+  		},
+  		animation: {
+  			'search-popup': 'search-popup 0.2s ease-out',
   		}
   	}
   },

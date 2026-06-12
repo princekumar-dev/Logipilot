@@ -1,10 +1,19 @@
-import { KPIGrid } from '@/features/dashboard/components/KPIGrid';
-import { MapWrapper } from '@/features/dashboard/components/MapWrapper';
-import { HighRiskTable } from '@/features/dashboard/components/HighRiskTable';
-import { AIRecommendations } from '@/features/dashboard/components/AIRecommendations';
-import { CopilotWidget } from '@/features/copilot/components/CopilotWidget';
+'use client';
+
+import dynamic from 'next/dynamic';
+import { useEffect } from 'react';
+
+const KPIGrid = dynamic(() => import('@/features/dashboard/components/KPIGrid').then(m => m.KPIGrid), { ssr: false, loading: () => <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">{[...Array(4)].map((_,i) => <div key={i} className="rounded-[14px] bg-white border border-[#dddddd] p-6 h-[140px] animate-pulse" />)}</div> });
+const MapWrapper = dynamic(() => import('@/features/dashboard/components/MapWrapper').then(m => m.MapWrapper), { ssr: false, loading: () => <div className="h-[460px] w-full rounded-[14px] bg-[#f7f7f7] animate-pulse" /> });
+const HighRiskTable = dynamic(() => import('@/features/dashboard/components/HighRiskTable').then(m => m.HighRiskTable), { ssr: false, loading: () => <div className="h-[784px] w-full rounded-[14px] bg-[#f7f7f7] animate-pulse" /> });
+const AIRecommendations = dynamic(() => import('@/features/dashboard/components/AIRecommendations').then(m => m.AIRecommendations), { ssr: false, loading: () => <div className="h-[300px] w-full rounded-[14px] bg-[#f7f7f7] animate-pulse" /> });
+const CopilotWidget = dynamic(() => import('@/features/copilot/components/CopilotWidget').then(m => m.CopilotWidget), { ssr: false });
 
 export default function DashboardPage() {
+  useEffect(() => {
+    import('@/features/dashboard/components/HighRiskTable');
+  }, []);
+
   return (
     <div className="bg-white min-h-[calc(100vh-80px)]">
       <div className="p-6 md:p-10 space-y-8 max-w-[1440px] mx-auto">

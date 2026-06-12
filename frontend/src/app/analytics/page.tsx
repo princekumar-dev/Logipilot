@@ -1,24 +1,114 @@
 'use client';
 
-import { motion, Variants } from 'framer-motion';
-import { LineChart, BarChart2, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect, useRef } from 'react';
+import { TrendingUp, TrendingDown, Package, Truck, AlertTriangle, CheckCircle } from "lucide-react";
+import {
+  LineChart as ReLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  BarChart as ReBarChart,
+  Bar,
+  Cell,
+} from 'recharts';
+import analyticsService, { AnalyticsSummary } from '@/services/analytics.service';
 
-const container = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } }
-};
+const COLORS = ['#222222', '#6a6a6a', '#c13515', '#008a05', '#b25a00', '#1a5fb4', '#8b5cf6', '#ec4899'];
 
-const item: Variants = {
-  hidden: { opacity: 0, y: 15 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-};
+function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setSize({ width: Math.floor(width), height: Math.floor(height) });
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return size;
+}
+
+function useCountUp(target: number, duration = 600, enabled = true) {
+  const [value, setValue] = useState(0);
+  const frameRef = useRef<number>(0);
+  const startRef = useRef<number>(0);
+  const fromRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled) { setValue(0); return; }
+    fromRef.current = value;
+    startRef.current = 0;
+    const step = (ts: number) => {
+      if (!startRef.current) startRef.current = ts;
+      const p = Math.min((ts - startRef.current) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setValue(Math.round(fromRef.current + (target - fromRef.current) * eased));
+      if (p < 1) frameRef.current = requestAnimationFrame(step);
+    };
+    frameRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [target, duration, enabled]);
+
+  return value;
+}
+
+function formatMinutes(mins: number): string {
+  if (mins === 0) return '0m';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function formatDate(dateStr: any): string {
+  if (!dateStr) return '';
+  const d = new Date(String(dateStr));
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 export default function AnalyticsPage() {
+  const [data, setData] = useState<AnalyticsSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState(30);
+
+  useEffect(() => {
+    setLoading(true);
+    analyticsService.getAnalyticsSummary(period)
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [period]);
+
+  const lineChartRef = useRef<HTMLDivElement>(null);
+  const barChartRef = useRef<HTMLDivElement>(null);
+  const lineChartSize = useContainerSize(lineChartRef);
+  const barChartSize = useContainerSize(barChartRef);
+
+  const summary = data?.summary;
+  const volumeTrend = data?.volumeTrend ?? [];
+  const delayCauses = data?.delayCauses ?? [];
+
+  const onTimeRate = useCountUp(summary?.onTimeRate ?? 0, 600, !loading);
+  const totalShipments = useCountUp(summary?.totalShipments ?? 0, 600, !loading);
+  const avgDelayMins = summary?.avgDelayMinutes ?? 0;
+  const delayedCount = summary?.delayedShipments ?? 0;
+  const deliveredCount = summary?.deliveredShipments ?? 0;
+
+  const emptyState = !loading && (!summary || summary.totalShipments === 0);
+
   return (
     <div className="bg-white min-h-[calc(100vh-80px)]">
       <div className="p-6 md:p-10 space-y-8 max-w-[1440px] mx-auto text-[#222222]">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#dddddd]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#dddddd] transition-all duration-300">
           <div>
             <h1 className="text-[32px] font-bold tracking-tight text-[#222222]">
               Analytics & Reports
@@ -26,80 +116,195 @@ export default function AnalyticsPage() {
             <p className="text-[16px] text-[#6a6a6a] mt-1">Deep insights, historical data, and performance metrics.</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-            <button className="flex-1 sm:flex-none border border-[#dddddd] text-[#222222] font-bold text-[14px] px-4 py-2 rounded-[8px] hover:bg-[#f7f7f7] transition-colors">Last 7 Days</button>
-            <button className="flex-1 sm:flex-none border border-[#222222] bg-white text-[#222222] font-bold text-[14px] px-4 py-2 rounded-[8px] hover:bg-[#f7f7f7] transition-colors">This Month</button>
+            <button
+              onClick={() => setPeriod(7)}
+              className={`flex-1 sm:flex-none font-bold text-[14px] px-4 py-2 rounded-[8px] transition-colors border ${
+                period === 7
+                  ? 'bg-[#222222] text-white border-[#222222]'
+                  : 'border-[#dddddd] text-[#222222] hover:bg-[#f7f7f7]'
+              }`}
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => setPeriod(30)}
+              className={`flex-1 sm:flex-none font-bold text-[14px] px-4 py-2 rounded-[8px] transition-colors border ${
+                period === 30
+                  ? 'bg-[#222222] text-white border-[#222222]'
+                  : 'border-[#dddddd] text-[#222222] hover:bg-[#f7f7f7]'
+              }`}
+            >
+              This Month
+            </button>
           </div>
-        </motion.div>
-
-        <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <motion.div variants={item} whileHover={{ y: -4, transition: { duration: 0.2 } }} className="relative overflow-hidden rounded-[14px] bg-white border border-[#dddddd] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer h-[160px]">
-            <div className="relative p-6 flex flex-col h-full z-10">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-[14px] font-medium text-[#6a6a6a]">On-Time Delivery</span>
-                <LineChart className="h-5 w-5 text-[#222222]" strokeWidth={1.5} />
-              </div>
-              <div className="flex flex-col mt-auto">
-                <div className="text-[32px] font-bold tracking-tight text-[#222222]">93.4%</div>
-                <p className="flex items-center gap-1.5 text-[14px] font-bold text-[#008a05] mt-1"><TrendingUp className="w-3.5 h-3.5" strokeWidth={2} /> +2.1% from last week</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div variants={item} whileHover={{ y: -4, transition: { duration: 0.2 } }} className="relative overflow-hidden rounded-[14px] bg-white border border-[#dddddd] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer h-[160px]">
-            <div className="relative p-6 flex flex-col h-full z-10">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-[14px] font-medium text-[#6a6a6a]">Avg Delay Duration</span>
-                <BarChart2 className="h-5 w-5 text-[#222222]" strokeWidth={1.5} />
-              </div>
-              <div className="flex flex-col mt-auto">
-                <div className="text-[32px] font-bold tracking-tight text-[#222222]">1h 45m</div>
-                <p className="flex items-center gap-1.5 text-[14px] font-bold text-[#008a05] mt-1"><TrendingDown className="w-3.5 h-3.5" strokeWidth={2} /> -15m from last week</p>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div variants={item} whileHover={{ y: -4, transition: { duration: 0.2 } }} className="relative overflow-hidden rounded-[14px] bg-white border border-[#dddddd] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer h-[160px]">
-            <div className="relative p-6 flex flex-col h-full z-10">
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-[14px] font-medium text-[#6a6a6a]">Fuel Efficiency Savings</span>
-                <DollarSign className="h-5 w-5 text-[#222222]" strokeWidth={1.5} />
-              </div>
-              <div className="flex flex-col mt-auto">
-                <div className="text-[32px] font-bold tracking-tight text-[#222222]">$12,450</div>
-                <p className="flex items-center gap-1.5 text-[14px] font-bold text-[#008a05] mt-1"><TrendingUp className="w-3.5 h-3.5" strokeWidth={2} /> +$800 this month</p>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }} className="bg-white border border-[#dddddd] rounded-[14px] h-96 flex flex-col relative overflow-hidden group hover:border-[#222222] transition-colors">
-            <div className="p-6 border-b border-[#dddddd] bg-white relative z-10">
-              <h3 className="font-bold text-[18px] text-[#222222]">Shipment Volume Trend</h3>
-              <p className="text-[14px] text-[#6a6a6a] mt-1">Daily completed shipments over 30 days</p>
-            </div>
-            <div className="flex-1 flex flex-col items-center justify-center text-[#6a6a6a] gap-3 relative z-10 bg-[#f7f7f7]">
-              <div className="w-16 h-16 rounded-full bg-white border border-[#dddddd] flex items-center justify-center">
-                <LineChart className="w-6 h-6 text-[#222222]" strokeWidth={1.5} />
-              </div>
-              <span className="font-bold text-[14px]">Recharts LineChart Placeholder</span>
-            </div>
-          </motion.div>
-          
-          <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }} className="bg-white border border-[#dddddd] rounded-[14px] h-96 flex flex-col relative overflow-hidden group hover:border-[#222222] transition-colors">
-            <div className="p-6 border-b border-[#dddddd] bg-white relative z-10">
-              <h3 className="font-bold text-[18px] text-[#222222]">Delay Root Causes</h3>
-              <p className="text-[14px] text-[#6a6a6a] mt-1">Categorized by occurrence frequency</p>
-            </div>
-            <div className="flex-1 flex flex-col items-center justify-center text-[#6a6a6a] gap-3 relative z-10 bg-[#f7f7f7]">
-              <div className="w-16 h-16 rounded-full bg-white border border-[#dddddd] flex items-center justify-center">
-                <BarChart2 className="w-6 h-6 text-[#222222]" strokeWidth={1.5} />
-              </div>
-              <span className="font-bold text-[14px]">Recharts BarChart Placeholder</span>
-            </div>
-          </motion.div>
         </div>
+
+        {emptyState ? (
+          <div className="flex flex-col items-center justify-center py-20 text-[#6a6a6a]">
+            <Package className="w-12 h-12 mb-4 text-[#dddddd]" strokeWidth={1.5} />
+            <p className="text-[18px] font-bold">No analytics data yet</p>
+            <p className="text-[14px] mt-1">Shipments will appear here once the database is connected and data is available.</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-300">
+              <div className="relative overflow-hidden rounded-[14px] bg-white border border-[#dddddd] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer h-[160px] hover:-translate-y-1">
+                <div className="relative p-6 flex flex-col h-full z-10">
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-[14px] font-medium text-[#6a6a6a]">On-Time Delivery</span>
+                    <CheckCircle className="h-5 w-5 text-[#222222]" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex flex-col mt-auto">
+                    <div className="text-[32px] font-bold tracking-tight text-[#222222]">
+                      {loading ? (
+                        <div className="h-8 w-20 rounded bg-[#f7f7f7] animate-pulse" />
+                      ) : (
+                        <span className="transition-opacity duration-300">{onTimeRate}%</span>
+                      )}
+                    </div>
+                    {!loading && (
+                      <p className={`flex items-center gap-1.5 text-[14px] font-bold mt-1 ${summary && summary.onTimeRate >= 90 ? 'text-[#008a05]' : 'text-[#6a6a6a]'}`}>
+                        {summary && summary.onTimeRate >= 90
+                          ? <><TrendingUp className="w-3.5 h-3.5" strokeWidth={2} /> Good performance</>
+                          : <><TrendingDown className="w-3.5 h-3.5" strokeWidth={2} /> Needs improvement</>}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-[14px] bg-white border border-[#dddddd] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer h-[160px] hover:-translate-y-1">
+                <div className="relative p-6 flex flex-col h-full z-10">
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-[14px] font-medium text-[#6a6a6a]">Avg Delay Duration</span>
+                    <AlertTriangle className="h-5 w-5 text-[#222222]" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex flex-col mt-auto">
+                    <div className="text-[32px] font-bold tracking-tight text-[#222222]">
+                      {loading ? (
+                        <div className="h-8 w-20 rounded bg-[#f7f7f7] animate-pulse" />
+                      ) : (
+                        <span className="transition-opacity duration-300">{formatMinutes(avgDelayMins)}</span>
+                      )}
+                    </div>
+                    {!loading && (
+                      <p className="flex items-center gap-1.5 text-[14px] font-bold text-[#6a6a6a] mt-1">
+                        {delayedCount} delayed shipments
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative overflow-hidden rounded-[14px] bg-white border border-[#dddddd] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer h-[160px] hover:-translate-y-1">
+                <div className="relative p-6 flex flex-col h-full z-10">
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-[14px] font-medium text-[#6a6a6a]">Total Shipments</span>
+                    <Truck className="h-5 w-5 text-[#222222]" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex flex-col mt-auto">
+                    <div className="text-[32px] font-bold tracking-tight text-[#222222]">
+                      {loading ? (
+                        <div className="h-8 w-20 rounded bg-[#f7f7f7] animate-pulse" />
+                      ) : (
+                        <span className="transition-opacity duration-300">{totalShipments.toLocaleString()}</span>
+                      )}
+                    </div>
+                    {!loading && (
+                      <p className="flex items-center gap-1.5 text-[14px] font-bold text-[#008a05] mt-1">
+                        {deliveredCount} delivered
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white border border-[#dddddd] rounded-[14px] group hover:border-[#222222] transition-colors transition-all duration-300">
+                <div className="p-6 border-b border-[#dddddd]">
+                  <h3 className="font-bold text-[18px] text-[#222222]">Shipment Volume Trend</h3>
+                  <p className="text-[14px] text-[#6a6a6a] mt-1">Daily completed shipments over {period} days</p>
+                </div>
+                <div ref={lineChartRef} className="relative p-4" style={{ width: '100%', height: 300 }}>
+                  {loading && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white rounded-b-[14px]">
+                      <div className="w-[calc(100%-2rem)] h-[calc(100%-2rem)] bg-[#f7f7f7] rounded-[8px] animate-pulse" />
+                    </div>
+                  )}
+                  {!loading && volumeTrend.length === 0 ? (
+                    <div className="w-full h-full flex items-center justify-center text-[#6a6a6a] text-[14px]">No shipment data available</div>
+                  ) : lineChartSize.width > 0 && lineChartSize.height > 0 ? (
+                    <ReLineChart width={lineChartSize.width} height={lineChartSize.height} data={volumeTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={formatDate}
+                        stroke="#6a6a6a"
+                        fontSize={11}
+                        tickLine={false}
+                      />
+                      <YAxis stroke="#6a6a6a" fontSize={11} tickLine={false} allowDecimals={false} />
+                      <Tooltip
+                        labelFormatter={formatDate}
+                        contentStyle={{ borderRadius: 8, border: '1px solid #ddd', fontSize: 12 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke="#222222"
+                        strokeWidth={2}
+                        dot={{ fill: '#222222', r: 3 }}
+                        activeDot={{ r: 5 }}
+                        name="Shipments"
+                      />
+                    </ReLineChart>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#dddddd] rounded-[14px] group hover:border-[#222222] transition-colors transition-all duration-300">
+                <div className="p-6 border-b border-[#dddddd]">
+                  <h3 className="font-bold text-[18px] text-[#222222]">Delay Root Causes</h3>
+                  <p className="text-[14px] text-[#6a6a6a] mt-1">Categorized by occurrence frequency</p>
+                </div>
+                <div ref={barChartRef} className="relative p-4" style={{ width: '100%', height: 300 }}>
+                  {loading && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white rounded-b-[14px]">
+                      <div className="w-[calc(100%-2rem)] h-[calc(100%-2rem)] bg-[#f7f7f7] rounded-[8px] animate-pulse" />
+                    </div>
+                  )}
+                  {!loading && delayCauses.length === 0 ? (
+                    <div className="w-full h-full flex items-center justify-center text-[#6a6a6a] text-[14px]">No delay data available</div>
+                  ) : barChartSize.width > 0 && barChartSize.height > 0 ? (
+                    <ReBarChart width={barChartSize.width} height={barChartSize.height} data={delayCauses} layout="vertical" margin={{ left: 80 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                      <XAxis type="number" stroke="#6a6a6a" fontSize={11} tickLine={false} allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="cause"
+                        stroke="#6a6a6a"
+                        fontSize={11}
+                        tickLine={false}
+                        width={80}
+                      />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid #ddd', fontSize: 12 }}
+                      />
+                      <Bar dataKey="count" name="Occurrences" radius={[0, 4, 4, 0]}>
+                        {delayCauses.map((_, index) => (
+                          <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </ReBarChart>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
+

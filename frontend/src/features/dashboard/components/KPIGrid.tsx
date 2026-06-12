@@ -1,83 +1,100 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, Variants } from 'framer-motion';
+import { useState, useEffect, useRef, memo } from 'react';
 import { Package, AlertTriangle, CheckCircle, Truck, TrendingUp, TrendingDown } from 'lucide-react';
+import analyticsService, { DashboardStats } from '@/services/analytics.service';
 
-const kpis = [
-  {
-    title: 'Active Shipments',
-    value: '1,248',
-    icon: Package,
-    trend: '+12.5%',
-    trendUp: true,
-  },
-  {
-    title: 'Delayed Shipments',
-    value: '74',
-    icon: AlertTriangle,
-    trend: '+4.1%',
-    trendUp: false,
-  },
-  {
-    title: 'On-Time Rate',
-    value: '93.4%',
-    icon: CheckCircle,
-    trend: '+0.2%',
-    trendUp: true,
-  },
-  {
-    title: 'Fleet Utilization',
-    value: '87%',
-    icon: Truck,
-    trend: '-2.4%',
-    trendUp: false,
-  },
-];
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
-const item: Variants = {
-  hidden: { opacity: 0, y: 15 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-};
-
-export function KPIGrid() {
-  const [mounted, setMounted] = useState(false);
+function useCountUp(target: number, duration = 600, enabled = true) {
+  const [value, setValue] = useState(0);
+  const frameRef = useRef<number>(0);
+  const startRef = useRef<number>(0);
+  const fromRef = useRef(0);
 
   useEffect(() => {
-    setMounted(true);
+    if (!enabled) {
+      setValue(0);
+      return;
+    }
+    fromRef.current = value;
+    startRef.current = 0;
+    const step = (timestamp: number) => {
+      if (!startRef.current) startRef.current = timestamp;
+      const elapsed = timestamp - startRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(fromRef.current + (target - fromRef.current) * eased));
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(step);
+      }
+    };
+    frameRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [target, duration, enabled]);
+
+  return value;
+}
+
+export const KPIGrid = memo(function KPIGrid() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    analyticsService.getDashboardStats()
+      .then((s) => { if (!cancelled) setStats(s); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
-  if (!mounted) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi, idx) => (
-          <div key={idx} className="rounded-[14px] bg-white border border-[#dddddd] shadow-sm p-6 h-[140px]">
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const activeShipments = useCountUp(stats?.activeShipments ?? 0, 600, !loading);
+  const delayedShipments = useCountUp(stats?.delayedShipments ?? 0, 600, !loading);
+  const onTimeRate = useCountUp(stats?.onTimeRate ?? 0, 600, !loading);
+  const fleetUtilization = useCountUp(stats?.fleetUtilization ?? 0, 600, !loading);
+  const inTransit = stats?.inTransitShipments ?? 0;
+  const totalShipments = stats?.totalShipments ?? 0;
+  const activeVehicles = stats?.activeVehicles ?? 0;
+  const totalVehicles = stats?.totalVehicles ?? 0;
+
+  const kpis = [
+    {
+      title: 'Active Shipments',
+      value: loading ? null : activeShipments,
+      icon: Package,
+      trend: `${inTransit} in transit`,
+      trendUp: true,
+    },
+    {
+      title: 'Delayed Shipments',
+      value: loading ? null : delayedShipments,
+      icon: AlertTriangle,
+      trend: delayedShipments > 0 ? `${totalShipments > 0 ? Math.round((delayedShipments / totalShipments) * 100) : 0}% of total` : 'None',
+      trendUp: delayedShipments === 0,
+    },
+    {
+      title: 'On-Time Rate',
+      value: loading ? null : onTimeRate,
+      suffix: '%',
+      icon: CheckCircle,
+      trend: onTimeRate >= 90 ? 'Good' : 'Needs improvement',
+      trendUp: onTimeRate >= 90,
+    },
+    {
+      title: 'Fleet Utilization',
+      value: loading ? null : fleetUtilization,
+      suffix: '%',
+      icon: Truck,
+      trend: `${activeVehicles}/${totalVehicles} vehicles`,
+      trendUp: fleetUtilization >= 70,
+    },
+  ];
 
   return (
-    <motion.div 
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-    >
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {kpis.map((kpi, idx) => (
-        <motion.div 
-          key={idx} 
-          variants={item}
-          whileHover={{ y: -4, transition: { duration: 0.2 } }}
+        <div
+          key={idx}
           className="relative bg-white border border-[#dddddd] rounded-[14px] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-300 group cursor-pointer flex flex-col justify-between p-6 h-[140px]"
         >
           <div className="flex justify-between items-start">
@@ -87,15 +104,23 @@ export function KPIGrid() {
 
           <div className="flex items-end justify-between">
             <div className="text-[28px] font-bold tracking-tight text-[#222222]">
-              {kpi.value}
+              {loading ? (
+                <div className="h-8 w-16 rounded bg-[#f7f7f7] animate-pulse" />
+              ) : (
+                <span className="transition-opacity duration-300 opacity-100">
+                  {kpi.value?.toLocaleString() ?? '0'}{kpi.suffix ?? ''}
+                </span>
+              )}
             </div>
-            <div className={`flex items-center gap-1 text-[14px] font-medium ${kpi.trendUp ? 'text-[#008a05]' : 'text-[#c13515]'}`}>
-              {kpi.trendUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {kpi.trend}
-            </div>
+            {!loading && (
+              <div className={`flex items-center gap-1 text-[14px] font-medium transition-opacity duration-500 opacity-100 ${kpi.trendUp ? 'text-[#008a05]' : 'text-[#c13515]'}`}>
+                {kpi.trendUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                {kpi.trend}
+              </div>
+            )}
           </div>
-        </motion.div>
+        </div>
       ))}
-    </motion.div>
+    </div>
   );
-}
+});

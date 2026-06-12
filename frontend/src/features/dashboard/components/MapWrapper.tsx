@@ -12,6 +12,6 @@ const LiveMap = dynamic(() => import('./LiveMap').then((mod) => mod.LiveMap), {
   ),
 });
 
-export function MapWrapper() {
-  return <LiveMap />;
+export function MapWrapper({ mode }: { mode?: 'dashboard' | 'fleet' }) {
+  return <LiveMap mode={mode} />;
 }

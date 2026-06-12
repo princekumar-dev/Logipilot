@@ -5,39 +5,53 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { TopNav } from "@/components/layout/TopNav";
 import { BottomNav } from "@/components/mobile/BottomNav";
+import authService from '../../services/auth.service';
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const user = useAuthStore((state) => state.user);
+  // Refresh access token on mount if authenticated but token is missing (page refresh)
+  useEffect(() => {
+    if (mounted && isAuthenticated && !accessToken) {
+      authService.refresh()
+        .then((newToken) => {
+          useAuthStore.getState().setAccessToken(newToken);
+        })
+        .catch(() => {
+          useAuthStore.getState().logout();
+          router.replace('/login');
+        });
+    }
+  }, [mounted, isAuthenticated, accessToken, router]);
+
+  const userRole = useAuthStore((state) => state.user?.role);
 
   useEffect(() => {
-    if (mounted) {
-      const isPublicRoute = pathname === '/login' || pathname === '/signup';
-      
-      if (!isAuthenticated && !isPublicRoute) {
-        router.replace('/login');
-      } else if (isAuthenticated) {
-        if (isPublicRoute) {
-          // Redirect authenticated users away from login/signup
-          router.replace(user?.role === 'driver' ? '/driver' : '/');
-        } else if (user?.role === 'driver' && !(pathname === '/driver' || pathname.startsWith('/driver/'))) {
-          // Drivers can only access /driver routes
-          router.replace('/driver');
-        } else if (user?.role !== 'driver' && (pathname === '/driver' || pathname.startsWith('/driver/'))) {
-          // Managers/Admins cannot access /driver mobile routes
-          router.replace('/');
-        }
+    if (!mounted) return;
+
+    const isPublicRoute = pathname === '/login' || pathname === '/signup';
+    
+    if (!isAuthenticated && !isPublicRoute) {
+      router.replace('/login');
+    } else if (isAuthenticated && isPublicRoute) {
+      router.replace(userRole === 'driver' ? '/driver' : '/');
+    } else if (isAuthenticated) {
+      const isDriverRoute = pathname === '/driver' || pathname.startsWith('/driver/');
+      if (userRole === 'driver' && !isDriverRoute) {
+        router.replace('/driver');
+      } else if (userRole !== 'driver' && isDriverRoute) {
+        router.replace('/');
       }
     }
-  }, [isAuthenticated, user, pathname, router, mounted]);
+  }, [isAuthenticated, userRole, pathname, router, mounted]);
 
   if (!mounted) return null;
 
@@ -47,8 +61,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     return <>{children}</>;
   }
 
-  // To prevent flash of content, only render children if authenticated
+  // To prevent flash of content, only render children if authenticated and token is ready
   if (!isAuthenticated) return null;
+  if (isAuthenticated && !accessToken) return null;
 
   const isDriverRoute = pathname === '/driver' || pathname.startsWith('/driver/');
 
@@ -57,7 +72,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       {!isDriverRoute && <TopNav />}
       
       <div className={`flex flex-col flex-1 w-full ${isDriverRoute ? 'max-w-[480px] bg-white border-x border-[#dddddd] relative shadow-xl overflow-x-hidden' : 'pt-[80px]'}`}>
-        <main className={`flex-1 w-full min-h-[calc(100vh-80px)] pb-[88px] ${!isDriverRoute ? 'md:pb-0' : ''}`}>
+        <main key={pathname} className={`flex-1 w-full min-h-[calc(100vh-80px)] pb-[88px] page-enter ${!isDriverRoute ? 'md:pb-0' : ''}`}>
           {children}
         </main>
         <BottomNav />

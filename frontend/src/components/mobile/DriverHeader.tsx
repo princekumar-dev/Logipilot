@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Search, Menu, UserCircle2 } from 'lucide-react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 export function DriverHeader() {

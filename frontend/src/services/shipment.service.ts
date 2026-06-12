@@ -6,13 +6,16 @@ export interface Shipment {
   originWarehouseId?: string;
   destinationWarehouseId?: string;
   destinationAddress?: string;
+  destinationLocation?: { type: string; coordinates: number[] };
   driverId?: string;
   vehicleId?: string;
   status: 'pending' | 'in_transit' | 'delivered' | 'delayed' | 'cancelled';
   priority: 'low' | 'medium' | 'high' | 'critical';
   riskScore?: number;
   predictedDelay?: number;
+  predictedETA?: string;
   eta?: string;
+  distanceKm?: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { usePathname } from 'next/navigation';
 import { 
   Package, 
   Plus, 
@@ -26,6 +26,7 @@ export default function ShipmentsPage() {
   const [newShipmentDest, setNewShipmentDest] = useState('');
   const [newShipmentPriority, setNewShipmentPriority] = useState<'low'|'medium'|'high'|'critical'>('medium');
   const [isCreating, setIsCreating] = useState(false);
+  const pathname = usePathname();
 
   const fetchShipments = async () => {
     try {
@@ -42,8 +43,14 @@ export default function ShipmentsPage() {
   };
 
   useEffect(() => {
-    fetchShipments();
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    shipmentService.getAll({ limit: 50 })
+      .then((data) => { if (!cancelled) { setShipments(data.shipments); setError(null); } })
+      .catch((err) => { if (!cancelled) { console.error(err); setError('Failed to fetch shipments.'); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [pathname]);
 
   const handleCreateShipment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,11 +167,9 @@ export default function ShipmentsPage() {
                 </thead>
                 <tbody className="divide-y divide-[#dddddd]">
                   {shipments.map((shipment) => (
-                    <motion.tr 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
+                    <tr 
                       key={shipment._id} 
-                      className="hover:bg-[#f7f7f7] transition-colors group cursor-pointer"
+                      className="hover:bg-[#f7f7f7] transition-colors group cursor-pointer transition-all duration-300"
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -200,7 +205,7 @@ export default function ShipmentsPage() {
                           <MoreVertical className="w-5 h-5" strokeWidth={2} />
                         </button>
                       </td>
-                    </motion.tr>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -211,10 +216,8 @@ export default function ShipmentsPage() {
         {/* Create Modal overlay */}
         {isCreateModalOpen && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-[14px] shadow-[0_8px_28px_rgba(0,0,0,0.12)] w-full max-w-md overflow-hidden"
+            <div 
+              className="bg-white rounded-[14px] shadow-[0_8px_28px_rgba(0,0,0,0.12)] w-full max-w-md overflow-hidden transition-all duration-300"
             >
               <div className="p-6 border-b border-[#dddddd] bg-white">
                 <h2 className="text-[22px] font-bold text-[#222222]">Create New Shipment</h2>
@@ -266,7 +269,7 @@ export default function ShipmentsPage() {
                   </button>
                 </div>
               </form>
-            </motion.div>
+            </div>
           </div>
         )}
 
