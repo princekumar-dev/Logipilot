@@ -1,7 +1,17 @@
- Wrote README.md
+<div align="center">
+
 # LogiPilot AI
 
-**Predict. Optimize. Deliver.**
+### **Predict. Optimize. Deliver.**
+
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Express](https://img.shields.io/badge/Express-5-000000?style=flat-square&logo=express&logoColor=white)](https://expressjs.com)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose_9-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://www.mongodb.com)
+
+</div>
 
 An AI-powered logistics operations platform that predicts shipment delays, optimizes delivery routes, monitors fleets in real-time, and makes proactive operational decisions using traffic, weather, and historical dispatch data.
 
@@ -292,8 +302,8 @@ Base unit: `4px`
 ## Project Structure
 
 ```
-logipilot/
-├── frontend/                     # Next.js 15 (App Router)
+Logipilot/
+├── frontend/                     # Next.js 15 (App Router, Turbopack)
 │   ├── src/
 │   │   ├── app/                  # Route pages
 │   │   │   ├── layout.tsx        # Root layout (fonts, providers)
@@ -347,11 +357,9 @@ logipilot/
 │   │   └── utils/                # JWT + crypto helpers
 │   ├── package.json
 │   └── tsconfig.json
-│
-├── openrouteservice-main/        # ORS Docker setup
-├── specs/                        # Feature specifications
-└── logipilot/                    # Product documentation
 ```
+
+> **Note:** The self-hosted [OpenRouteService](https://github.com/princekumar-dev/OSM) routing engine used for route computation lives in my separate [`OSM`](https://github.com/princekumar-dev/OSM) repository (Docker setup).
 
 ---
 
@@ -367,8 +375,8 @@ logipilot/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/logipilot.git
-cd logipilot
+git clone https://github.com/princekumar-dev/Logipilot.git
+cd Logipilot
 ```
 
 ### 2. Install Backend Dependencies
@@ -829,9 +837,10 @@ cd frontend
 docker build -t logipilot-frontend .
 docker run -p 3000:3000 --env-file .env.local logipilot-frontend
 
-# OpenRouteService (route computation)
-cd openrouteservice-main
-docker-compose up -d
+# OpenRouteService (route computation) — see the OSM repo
+git clone https://github.com/princekumar-dev/OSM.git
+cd OSM
+docker compose up -d
 ```
 
 ### Production Checklist
@@ -870,20 +879,4 @@ Private — All rights reserved.
 
 ## Support
 
-For issues and feedback: [GitHub Issues](https://github.com/your-org/logipilot/issues)
-
-+ Thought: 119ms
-README.md created at the project root with full coverage of:
-- Vision & Features — all 8 major feature areas documented
-- Tech Stack — frontend, backend, external APIs, databases with versions
-- Design System — color palette, typography, spacing, shadows, CSS variables, custom classes (.btn-primary, .search-pill, .input-airbnb, .skeleton-shimmer), animations
-- Project Structure — full directory tree with descriptions
-- Getting Started — step-by-step setup with scripts reference
-- Environment Variables — backend and frontend configs
-- API Reference — all 30+ endpoints with methods, paths, auth, and descriptions
-- Database Schema — dual-database architecture (app + company DB)
-- Auth & RBAC — JWT dual-token system, role hierarchy, route protection
-- Design Tokens & CSS — Tailwind config, CSS variables, custom utilities
-- Page Routes — desktop, mobile driver, auth pages with navigation structure
-- Deployment — Docker setup and production checklist
-- Roadmap — 3-phase plan
+For issues and feedback: [GitHub Issues](https://github.com/princekumar-dev/Logipilot/issues)
