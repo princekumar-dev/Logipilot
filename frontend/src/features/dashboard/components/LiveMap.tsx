@@ -397,30 +397,24 @@ export function LiveMap({ mode = 'dashboard' }: { mode?: 'dashboard' | 'fleet' }
 
     const fetchData = async () => {
       try {
-        if (mode === 'fleet') {
-          const vehicleData = await mapService.getVehicleLocations();
-          setVehicles(vehicleData.vehicles);
-          if (vehicleData.vehicles.length > 0) {
-            setBounds(vehicleData.vehicles.map((v) => ({ lat: v.location.lat, lng: v.location.lng })));
-          }
-        } else {
-          const [overview, vehicleData] = await Promise.all([
-            mapService.getOverview(),
-            mapService.getVehicleLocations(),
-          ]);
-          setWarehouses(overview.warehouses);
-          setShipments(overview.shipments);
-          setVehicles(vehicleData.vehicles);
+        // Both modes need shipments (route polylines) and warehouses (hub
+        // markers + route endpoints); `mode` only controls what is rendered.
+        const [overview, vehicleData] = await Promise.all([
+          mapService.getOverview(),
+          mapService.getVehicleLocations(),
+        ]);
+        setWarehouses(overview.warehouses);
+        setShipments(overview.shipments);
+        setVehicles(vehicleData.vehicles);
 
-          const allCoords: { lat: number; lng: number }[] = [];
-          overview.warehouses.forEach((w) => {
-            if (w.coordinates) allCoords.push({ lat: w.coordinates[1], lng: w.coordinates[0] });
-          });
-          vehicleData.vehicles.forEach((v) => {
-            allCoords.push({ lat: v.location.lat, lng: v.location.lng });
-          });
-          if (allCoords.length > 0) setBounds(allCoords);
-        }
+        const allCoords: { lat: number; lng: number }[] = [];
+        overview.warehouses.forEach((w) => {
+          if (w.coordinates) allCoords.push({ lat: w.coordinates[1], lng: w.coordinates[0] });
+        });
+        vehicleData.vehicles.forEach((v) => {
+          allCoords.push({ lat: v.location.lat, lng: v.location.lng });
+        });
+        if (allCoords.length > 0) setBounds(allCoords);
       } catch (err) {
         console.error('Map data fetch failed:', err);
       } finally {
@@ -494,55 +488,56 @@ export function LiveMap({ mode = 'dashboard' }: { mode?: 'dashboard' | 'fleet' }
         <CaptureMapRef onMap={(m) => { mapRef.current = m; }} />
         <AutoFitBounds bounds={bounds} />
 
-        {mode === 'dashboard' && (
-          <>
-            {warehouses
-              .filter((w) => w.coordinates)
-              .map((w) => (
-                <Marker
-                  key={`hub-${w._id}`}
-                  position={[w.coordinates![1], w.coordinates![0]]}
-                  icon={hoveredWarehouseId === w._id ? HUB_ICON_HOVER : HUB_ICON}
-                  eventHandlers={{
-                    mouseover: () => setHoveredWarehouseId(w._id),
-                    mouseout: () => setHoveredWarehouseId(null),
-                  }}
-                />
-              ))}
-
-            <RoutePolylines
-              shipments={shipments}
-              hoveredRouteId={hoveredRouteId}
-              onRouteHover={setHoveredRouteId}
-              rerouteShipmentId={rerouteShipmentId}
-              onRerouteComplete={() => { setRerouteShipmentId(null); setRerouting(false); }}
-              theme={theme}
+        {/* Hub markers + shipment routes render in both dashboard and fleet modes */}
+        {warehouses
+          .filter((w) => w.coordinates)
+          .map((w) => (
+            <Marker
+              key={`hub-${w._id}`}
+              position={[w.coordinates![1], w.coordinates![0]]}
+              icon={hoveredWarehouseId === w._id ? HUB_ICON_HOVER : HUB_ICON}
+              eventHandlers={{
+                mouseover: () => setHoveredWarehouseId(w._id),
+                mouseout: () => setHoveredWarehouseId(null),
+              }}
             />
+          ))}
 
-            {vehicles.map((v) => {
-              const color =
-                v.shipmentStatus === 'delayed' ? '#ff385c' :
-                v.status === 'in_use' ? '#0066cc' :
-                v.status === 'maintenance' ? '#f2a600' : '#00a651';
-              const size = hoveredVehicleId === v._id ? 40 : 34;
-              return (
-                <Marker
-                  key={`dv-${v._id}`}
-                  position={[v.location.lat, v.location.lng]}
-                  icon={vehicleIcon(color, size)}
-                  eventHandlers={{
-                    mouseover: () => setHoveredVehicleId(v._id),
-                    mouseout: () => setHoveredVehicleId(null),
-                  }}
-                />
-              );
-            })}
-          </>
-        )}
+        <RoutePolylines
+          shipments={shipments}
+          hoveredRouteId={hoveredRouteId}
+          onRouteHover={setHoveredRouteId}
+          rerouteShipmentId={rerouteShipmentId}
+          onRerouteComplete={() => { setRerouteShipmentId(null); setRerouting(false); }}
+          theme={theme}
+        />
+
+        {mode === 'dashboard' &&
+          vehicles.map((v) => {
+            const color =
+              v.shipmentStatus === 'delayed' ? '#ff385c' :
+              v.status === 'in_use' ? '#0066cc' :
+              v.status === 'maintenance' ? '#f2a600' : '#00a651';
+            const size = hoveredVehicleId === v._id ? 40 : 34;
+            return (
+              <Marker
+                key={`dv-${v._id}`}
+                position={[v.location.lat, v.location.lng]}
+                icon={vehicleIcon(color, size)}
+                eventHandlers={{
+                  mouseover: () => setHoveredVehicleId(v._id),
+                  mouseout: () => setHoveredVehicleId(null),
+                }}
+              />
+            );
+          })}
 
         {mode === 'fleet' &&
           vehicles.map((v) => {
-            const color = v.shipmentStatus === 'delayed' ? '#ff385c' : '#00a651';
+            // Colors match the fleet legend: Available / In Use / Maintenance
+            const color =
+              v.status === 'in_use' ? '#0066cc' :
+              v.status === 'maintenance' ? '#f2a600' : '#00a651';
             const size = hoveredVehicleId === v._id ? 40 : 34;
             return (
               <Marker
@@ -643,7 +638,7 @@ export function LiveMap({ mode = 'dashboard' }: { mode?: 'dashboard' | 'fleet' }
 
       {mode === 'fleet' && !loading && (
         <div className={`absolute bottom-4 left-4 z-[1000] ${theme === 'dark' ? 'bg-[#1a1a2e]/95 border-[#333]' : 'bg-white/95 border-[#dddddd]'} backdrop-blur-sm border rounded-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.12)] px-4 py-3 pointer-events-none`}>
-          <div className={`flex items-center gap-5 text-[11px] font-bold ${theme === 'dark' ? 'text-[#ccc]' : 'text-[#222222]'}`}>
+          <div className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] font-bold ${theme === 'dark' ? 'text-[#ccc]' : 'text-[#222222]'}`}>
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-[3px] bg-[#00a651] border border-white shadow-sm" />
               Available
@@ -655,6 +650,23 @@ export function LiveMap({ mode = 'dashboard' }: { mode?: 'dashboard' | 'fleet' }
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-[3px] bg-[#f2a600] border border-white shadow-sm" />
               Maintenance
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-4 rounded-[4px] bg-[#222] flex items-center justify-center shadow-sm">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+              </span>
+              Hub
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-6 h-0.5 rounded" style={{ borderTop: '2px dashed #888' }} />
+              In Transit
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-6 h-0.5 bg-[#ff385c] rounded" />
+              Delayed
             </span>
           </div>
         </div>

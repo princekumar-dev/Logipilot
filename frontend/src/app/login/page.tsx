@@ -38,7 +38,7 @@ export default function LoginPage() {
       const response = await authService.login(data.email, data.password);
       setAuth(response.user, response.accessToken);
       setIsNavigating(true);
-      router.push('/');
+      router.push(response.user.role === 'driver' ? '/driver' : '/');
     } catch (err: unknown) {
       const error = err as any;
       setError(error.response?.data?.message || 'Authentication failed. Verify your credentials.');

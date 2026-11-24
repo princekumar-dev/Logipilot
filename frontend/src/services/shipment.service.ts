@@ -40,7 +40,7 @@ export interface ShipmentsListResponse {
 }
 
 const shipmentService = {
-  getAll: async (params?: { page?: number; limit?: number; status?: string; priority?: string }) => {
+  getAll: async (params?: { page?: number; limit?: number; status?: string; priority?: string; driverId?: string }) => {
     const response = await api.get<ShipmentsListResponse>('/shipments', { params });
     return response.data.data;
   },

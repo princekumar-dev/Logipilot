@@ -1,11 +1,11 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import User from './models/User';
-import Warehouse from './models/Warehouse';
-import Driver from './models/Driver';
-import Vehicle from './models/Vehicle';
-import Shipment from './models/Shipment';
-import ShipmentFeature from './models/ShipmentFeature';
+import { getWarehouseModel } from './models/Warehouse';
+import { getDriverModel } from './models/Driver';
+import { getVehicleModel } from './models/Vehicle';
+import { getShipmentModel } from './models/Shipment';
+import { getShipmentFeatureModel } from './models/ShipmentFeature';
 
 dotenv.config();
 
@@ -35,6 +35,8 @@ const driverNames = [
   'Manoj Tiwari', 'Pooja Mehta', 'Arun Prasad', 'Neha Kapoor', 'Rahul Yadav',
   'Sunita Devi', 'Vijay Malhotra', 'Asha Rani', 'Kiran Bhat', 'Meena Kumari',
 ];
+
+const DRIVER_DEFAULT_PASSWORD = 'LogiDriver';
 
 const vehicleTypes: Array<'truck' | 'van' | 'bike' | 'container'> = ['truck', 'van', 'bike', 'container'];
 const fuelTypes: Array<'diesel' | 'petrol' | 'electric' | 'cng'> = ['diesel', 'petrol', 'electric', 'cng'];
@@ -69,6 +71,14 @@ async function seed() {
   console.log('Connecting to MongoDB...');
   await mongoose.connect(MONGODB_URI);
   console.log('Connected.\n');
+
+  const [Warehouse, Driver, Vehicle, Shipment, ShipmentFeature] = await Promise.all([
+    getWarehouseModel(),
+    getDriverModel(),
+    getVehicleModel(),
+    getShipmentModel(),
+    getShipmentFeatureModel(),
+  ]);
 
   // Clear existing data
   console.log('Clearing existing data...');
@@ -129,6 +139,19 @@ async function seed() {
     }))
   );
   console.log(`  Drivers: ${drivers.length}`);
+
+  console.log('Creating driver login accounts...');
+  const driverUsers = await User.create(
+    driverNames.map((name) => ({
+      companyId: user._id,
+      name,
+      email: `${name.toLowerCase().replace(/\s/g, '.')}@example.com`,
+      passwordHash: DRIVER_DEFAULT_PASSWORD,
+      role: 'driver' as const,
+      status: 'active' as const,
+    }))
+  );
+  console.log(`  Driver users: ${driverUsers.length}`);
 
   // Create vehicles
   console.log('Creating vehicles...');

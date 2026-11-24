@@ -6,7 +6,10 @@ import { useEffect, useState, useRef } from 'react';
 import { toast } from 'sonner';
 import shipmentService, { Shipment } from '@/services/shipment.service';
 import warehouseService, { Warehouse } from '@/services/warehouse.service';
+import driverService from '@/services/driver.service';
 import { predictionService, PredictionResult } from '@/services/prediction.service';
+import mapService from '@/services/map.service';
+import { decodePolyline } from '@/lib/routeCache';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -34,44 +37,119 @@ const DEST_ICON = createDivIcon(
   [16, 16]
 );
 
-const NAV_ICON = createDivIcon(
-  `<div style="position:relative;display:flex;align-items:center;justify-content:center">
-    <div style="width:56px;height:56px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:1px solid #dddddd">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="#ff385c" stroke="#ff385c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-    </div>
-  </div>`,
-  [56, 56],
-  [28, 28]
-);
+function createNavIcon(heading: number): L.DivIcon {
+  return createDivIcon(
+    `<div style="position:relative;display:flex;align-items:center;justify-content:center">
+      <div style="width:56px;height:56px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);border:1px solid #dddddd">
+        <svg style="transform:rotate(${heading}deg)" width="24" height="24" viewBox="0 0 24 24" fill="#ff385c" stroke="#ff385c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 20 20 12 16 4 20 12 2"/></svg>
+      </div>
+    </div>`,
+    [56, 56],
+    [28, 28]
+  );
+}
 
-function MapController({ center, zoom }: { center: [number, number]; zoom: number }) {
+function MapController({
+  route,
+  currentPos,
+  recenterRequest,
+}: {
+  route: [number, number][];
+  currentPos: [number, number] | null;
+  recenterRequest: number;
+}) {
   const map = useMap();
+  const fittedRoute = useRef('');
+
   useEffect(() => {
-    if (map) map.setView(center, zoom);
-  }, [center, zoom, map]);
+    if (!route.length) return;
+    const routeKey = route.map((point) => `${point[0].toFixed(5)},${point[1].toFixed(5)}`).join('|');
+    if (fittedRoute.current === routeKey) return;
+    fittedRoute.current = routeKey;
+
+    map.fitBounds(L.latLngBounds(route.map(([lat, lng]) => L.latLng(lat, lng))), {
+      paddingTopLeft: [35, 140],
+      paddingBottomRight: [35, 150],
+      maxZoom: 15,
+    });
+  }, [map, route]);
+
+  useEffect(() => {
+    if (!recenterRequest) return;
+    if (currentPos) {
+      map.setView(L.latLng(currentPos[0], currentPos[1]), 16, { animate: true });
+    } else if (route.length) {
+      map.fitBounds(L.latLngBounds(route.map(([lat, lng]) => L.latLng(lat, lng))), {
+        padding: [50, 50],
+        maxZoom: 15,
+      });
+    }
+  }, [map, recenterRequest, route, currentPos]);
+
   return null;
 }
 
-function interpolatePosition(
-  origin: [number, number],
-  destination: [number, number],
-  progress: number
-): [number, number] {
-  const t = Math.max(0, Math.min(1, progress));
-  return [
-    origin[0] + (destination[0] - origin[0]) * t,
-    origin[1] + (destination[1] - origin[1]) * t,
-  ];
+function interpolateRoute(route: [number, number][], progress: number): [number, number] {
+  if (!route.length) return [20.5937, 78.9629];
+  if (route.length === 1) return route[0];
+
+  const segments = route.slice(1).map((point, index) => {
+    const previous = route[index];
+    const distance = mapDistance(previous, point);
+    return { start: previous, end: point, distance };
+  });
+  const totalDistance = segments.reduce((sum, segment) => sum + segment.distance, 0);
+  const targetDistance = Math.max(0, Math.min(1, progress)) * totalDistance;
+
+  let travelled = 0;
+  for (const segment of segments) {
+    if (travelled + segment.distance >= targetDistance) {
+      const segmentProgress = segment.distance === 0
+        ? 0
+        : (targetDistance - travelled) / segment.distance;
+      return [
+        segment.start[0] + (segment.end[0] - segment.start[0]) * segmentProgress,
+        segment.start[1] + (segment.end[1] - segment.start[1]) * segmentProgress,
+      ];
+    }
+    travelled += segment.distance;
+  }
+
+  return route[route.length - 1];
+}
+
+function mapDistance(a: [number, number], b: [number, number]): number {
+  const dLat = ((b[0] - a[0]) * Math.PI) / 180;
+  const dLng = ((b[1] - a[1]) * Math.PI) / 180;
+  const lat1 = (a[0] * Math.PI) / 180;
+  const lat2 = (b[0] * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function bearingBetween(a: [number, number], b: [number, number]): number {
+  const lat1 = (a[0] * Math.PI) / 180;
+  const lat2 = (b[0] * Math.PI) / 180;
+  const dLng = ((b[1] - a[1]) * Math.PI) / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180) / Math.PI;
 }
 
 function RoutePolylines({
   originCoords,
   destCoords,
   currentPos,
+  route,
 }: {
   originCoords: [number, number] | null;
   destCoords: [number, number] | null;
   currentPos: [number, number] | null;
+  route: [number, number][];
 }) {
   const map = useMap();
   const layersRef = useRef<L.Polyline[]>([]);
@@ -81,15 +159,26 @@ function RoutePolylines({
     layersRef.current.forEach((l) => l.remove());
     layersRef.current = [];
 
-    if (originCoords && destCoords) {
+    if (route.length >= 2) {
       const fullPath = L.polyline(
-        [originCoords, destCoords],
+        route,
         { color: '#dddddd', weight: 4, opacity: 0.8 }
       ).addTo(map);
       layersRef.current.push(fullPath);
     }
 
-    if (originCoords && currentPos) {
+    if (route.length >= 2 && currentPos) {
+      const nearestIndex = route.reduce((nearest, point, index) =>
+        mapDistance(point, currentPos) < mapDistance(route[nearest], currentPos)
+          ? index
+          : nearest,
+      0);
+      const traveledPath = L.polyline(
+        route.slice(0, nearestIndex + 1).concat([currentPos]),
+        { color: '#222222', weight: 4, opacity: 1 }
+      ).addTo(map);
+      layersRef.current.push(traveledPath);
+    } else if (originCoords && currentPos) {
       const traveledPath = L.polyline(
         [originCoords, currentPos],
         { color: '#222222', weight: 4, opacity: 1 }
@@ -101,7 +190,7 @@ function RoutePolylines({
       layersRef.current.forEach((l) => l.remove());
       layersRef.current = [];
     };
-  }, [map, originCoords, destCoords, currentPos]);
+  }, [map, originCoords, destCoords, currentPos, route]);
 
   return null;
 }
@@ -116,38 +205,60 @@ export default function DriverMapClient() {
   const [originCoords, setOriginCoords] = useState<[number, number] | null>(null);
   const [destCoords, setDestCoords] = useState<[number, number] | null>(null);
   const [currentPos, setCurrentPos] = useState<[number, number] | null>(null);
+  const [route, setRoute] = useState<[number, number][]>([]);
+  const [routeDistanceKm, setRouteDistanceKm] = useState(0);
+  const [routeDurationMinutes, setRouteDurationMinutes] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [recenterRequest, setRecenterRequest] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
       if (isFetching.current) return;
       isFetching.current = true;
       try {
-        const shipmentsData = await shipmentService.getAll({ limit: 50 });
-        const active = shipmentsData.shipments.find(
+        const driver = await driverService.getMe();
+        const shipmentsData = await shipmentService.getAll({
+          limit: 50,
+          ...(driver?._id ? { driverId: driver._id } : {}),
+        });
+        let active = shipmentsData.shipments.find(
           (s) => s.status === 'in_transit' || s.status === 'delayed'
         );
+
+        if (!active && !driver?._id) {
+          active = shipmentsData.shipments.find(
+            (s) => s.status === 'in_transit' || s.status === 'delayed'
+          );
+        }
 
         if (active) {
           setActiveShipment(active);
 
-          if (active.destinationLocation?.coordinates) {
-            const dc = active.destinationLocation.coordinates;
-            setDestCoords([dc[1], dc[0]]);
-          }
+          const [originWarehouse, destinationWarehouse] = await Promise.all([
+            active.originWarehouseId
+              ? warehouseService.getById(active.originWarehouseId).catch(() => null)
+              : Promise.resolve(null),
+            active.destinationWarehouseId
+              ? warehouseService.getById(active.destinationWarehouseId).catch(() => null)
+              : Promise.resolve(null),
+          ]);
 
-          if (active.originWarehouseId) {
-            try {
-              const wh = await warehouseService.getById(active.originWarehouseId);
-              if (wh.location?.coordinates) {
-                setOriginCoords([wh.location.coordinates[1], wh.location.coordinates[0]]);
-              }
-            } catch {
-              setOriginCoords([12.9716, 77.5946]);
-            }
-          } else {
-            setOriginCoords([12.9716, 77.5946]);
-          }
+          const originCoordinates = originWarehouse?.location?.coordinates;
+          const destinationCoordinates =
+            active.destinationLocation?.coordinates ||
+            destinationWarehouse?.location?.coordinates ||
+            null;
+
+          setOriginCoords(
+            originCoordinates
+              ? [originCoordinates[1], originCoordinates[0]]
+              : null
+          );
+          setDestCoords(
+            destinationCoordinates
+              ? [destinationCoordinates[1], destinationCoordinates[0]]
+              : null
+          );
 
           try {
             const pred = await predictionService.getPrediction(active._id);
@@ -155,6 +266,15 @@ export default function DriverMapClient() {
           } catch {
             // Continue without prediction
           }
+        } else {
+          setActiveShipment(null);
+          setOriginCoords(null);
+          setDestCoords(null);
+          setRoute([]);
+          setCurrentPos(null);
+          setRouteDistanceKm(0);
+          setRouteDurationMinutes(0);
+          setProgress(0);
         }
       } catch (error) {
         console.error('Failed to fetch map data', error);
@@ -171,46 +291,97 @@ export default function DriverMapClient() {
 
   useEffect(() => {
     if (!originCoords || !destCoords) return;
+    let cancelled = false;
+
+    mapService.getRoute(
+      { lat: originCoords[0], lng: originCoords[1] },
+      { lat: destCoords[0], lng: destCoords[1] }
+    ).then((routeData) => {
+      if (cancelled) return;
+      setRouteDistanceKm(routeData.distanceMeters / 1000);
+      setRouteDurationMinutes(Number(routeData.duration) / 60);
+
+      let points = routeData.polyline
+        ? decodePolyline(routeData.polyline)
+        : [{ lat: originCoords[0], lng: originCoords[1] }, { lat: destCoords[0], lng: destCoords[1] }];
+      let routePoints = points.map((point) => [point.lat, point.lng] as [number, number]);
+      if (routePoints.length >= 2) {
+        const startsAtDestination =
+          mapDistance(routePoints[0], destCoords) < mapDistance(routePoints[0], originCoords);
+        if (startsAtDestination) routePoints = routePoints.reverse();
+      }
+      setRoute(routePoints);
+      setProgress(0);
+    }).catch(() => {
+      if (cancelled) return;
+      const fallbackDistanceKm = mapDistance(originCoords, destCoords) / 1000;
+      setRouteDistanceKm(fallbackDistanceKm);
+      setRouteDurationMinutes((fallbackDistanceKm / speed) * 60);
+      setRoute([originCoords, destCoords]);
+    });
+
+    return () => { cancelled = true; };
+  }, [originCoords, destCoords]);
+
+  useEffect(() => {
+    if (route.length < 2) return;
+    const totalDistance = routeDistanceKm;
+    if (!totalDistance) return;
+
     const interval = setInterval(() => {
       setProgress((prev) => {
-        const next = prev + 0.005;
+        const distanceAdvancedPerTickKm = (speed * 2) / 3600;
+        const next = prev + distanceAdvancedPerTickKm / totalDistance;
         if (next >= 1) return 0;
         return next;
       });
     }, 2000);
     return () => clearInterval(interval);
-  }, [originCoords, destCoords]);
+  }, [route, routeDistanceKm, speed]);
 
   useEffect(() => {
-    if (originCoords && destCoords) {
-      setCurrentPos(interpolatePosition(originCoords, destCoords, progress));
+    if (route.length) {
+      setCurrentPos(interpolateRoute(route, progress));
     }
-  }, [progress, originCoords, destCoords]);
+  }, [progress, route]);
 
-  const totalDistance = activeShipment?.distanceKm || 0;
+  const totalDistance = routeDistanceKm;
   const distanceCovered = totalDistance * progress;
   const distanceRemaining = totalDistance - distanceCovered;
 
-  const etaMins = prediction?.predictedETA
-    ? Math.max(0, Math.floor((new Date(prediction.predictedETA).getTime() - Date.now()) / 60000))
-    : Math.ceil((distanceRemaining / (speed || 45)) * 60);
+  const etaMins = routeDurationMinutes > 0
+    ? Math.max(1, Math.ceil(routeDurationMinutes * (1 - progress)))
+    : Math.max(1, Math.ceil((distanceRemaining / (speed || 45)) * 60));
 
   const defaultCenter: [number, number] = currentPos || originCoords || destCoords || [20.5937, 78.9629];
+  const nearestRouteIndex = route.length && currentPos
+    ? route.reduce((nearest, point, index) =>
+        mapDistance(point, currentPos) < mapDistance(route[nearest], currentPos)
+          ? index
+          : nearest,
+      0)
+    : 0;
+  const headingTarget = route[nearestRouteIndex + 1] || route[nearestRouteIndex] || currentPos;
+  const routeHeading = currentPos && headingTarget
+    ? bearingBetween(currentPos, headingTarget)
+    : 0;
+  const navIcon = createNavIcon(routeHeading);
 
   return (
     <div id="driver-map-container" className="relative w-full h-full min-h-[calc(100vh-88px-72px)] bg-[#f7f7f7] overflow-hidden flex flex-col">
       <MapContainer center={defaultCenter} zoom={12} className="absolute inset-0 z-0 w-full h-full" zoomControl={false}>
         <TileLayer url={TILE_URL} attribution={TILE_ATTR} />
-        <MapController center={defaultCenter} zoom={13} />
+        <MapController route={route} currentPos={currentPos} recenterRequest={recenterRequest} />
 
         {originCoords && <Marker position={originCoords} icon={ORIGIN_ICON} />}
         {destCoords && <Marker position={destCoords} icon={DEST_ICON} />}
-        {currentPos && <Marker position={currentPos} icon={NAV_ICON} />}
+        {currentPos && <Marker position={currentPos} icon={navIcon} />}
 
         <RoutePolylines
           originCoords={originCoords}
           destCoords={destCoords}
           currentPos={currentPos}
+          route={route}
         />
       </MapContainer>
 
@@ -306,6 +477,7 @@ export default function DriverMapClient() {
           <AlertTriangle className="w-5 h-5" />
         </Button>
         <Button
+          onClick={() => setRecenterRequest((request) => request + 1)}
           variant="outline"
           size="icon"
           className="w-12 h-12 rounded-[14px] bg-[#ff385c] border-none text-white shadow-[0_4px_12px_rgba(255,56,92,0.3)] hover:bg-[#e00b41] pointer-events-auto"
@@ -328,13 +500,7 @@ export default function DriverMapClient() {
 
         {currentPos && (
           <button
-            onClick={() => {
-              const mapEl = document.querySelector('.leaflet-container');
-              if (mapEl) {
-                const map = (mapEl as any)._leaflet_map;
-                if (map) map.setView(currentPos, 13);
-              }
-            }}
+            onClick={() => setRecenterRequest((request) => request + 1)}
             className="bg-white/90 backdrop-blur-xl border border-[#dddddd] px-4 py-2.5 rounded-[14px] shadow-[0_4px_12px_rgba(0,0,0,0.05)] flex items-center gap-2 pointer-events-auto hover:bg-[#f7f7f7] transition-colors"
           >
             <MapPin className="w-4 h-4 text-[#222222]" />

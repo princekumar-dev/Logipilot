@@ -6,6 +6,8 @@ const api = axios.create({
   withCredentials: true // To send and receive HttpOnly cookies
 });
 
+let refreshPromise: Promise<string> | null = null;
+
 // Request interceptor to add the access token to headers
 api.interceptors.request.use(
   (config) => {
@@ -24,12 +26,18 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const requestUrl = originalRequest?.url || '';
+    const isRefreshRequest = requestUrl.includes('/auth/refresh');
+
+    if (error.response?.status === 401 && !isRefreshRequest && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
         const authService = (await import('./auth.service')).default;
-        const newAccessToken = await authService.refresh();
+        refreshPromise ||= authService.refresh().finally(() => {
+          refreshPromise = null;
+        });
+        const newAccessToken = await refreshPromise;
         
         useAuthStore.getState().setAccessToken(newAccessToken);
         originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;

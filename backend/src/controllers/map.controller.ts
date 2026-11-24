@@ -39,9 +39,13 @@ export const getVehicleLocations = async (req: Request, res: Response) => {
       .map(v => v.currentShipmentId)
       .filter((id): id is mongoose.Types.ObjectId => id != null);
 
-    const [shipments, warehouses, latestLocations] = await Promise.all([
+    const [shipments, warehouses, activeShipments, latestLocations] = await Promise.all([
       Shipment.find({ _id: { $in: shipmentIds } }),
       Warehouse.find({}),
+      Shipment.find({
+        vehicleId: { $in: vehicleIds },
+        status: { $in: ['in_transit', 'delayed'] },
+      }).sort({ plannedDispatchTime: -1 }),
       GpsTracking.aggregate([
         { $match: { vehicleId: { $in: vehicleIds } } },
         { $sort: { timestamp: -1 } },
@@ -64,12 +68,24 @@ export const getVehicleLocations = async (req: Request, res: Response) => {
     const shipmentMap = new Map<string, any>();
     shipments.forEach(s => shipmentMap.set(s._id.toString(), s));
 
+    // Fallback: vehicle.currentShipmentId is often unset, so resolve the
+    // vehicle's active shipment from the shipment -> vehicleId side.
+    const activeShipmentByVehicle = new Map<string, any>();
+    activeShipments.forEach(s => {
+      if (s.vehicleId && !activeShipmentByVehicle.has(s.vehicleId.toString())) {
+        activeShipmentByVehicle.set(s.vehicleId.toString(), s);
+      }
+    });
+
     const gpsLocationMap = new Map<string, any>();
     latestLocations.forEach(loc => gpsLocationMap.set(loc._id.toString(), loc));
 
     const result = vehicles
       .map(v => {
-        const shipment = v.currentShipmentId ? shipmentMap.get(v.currentShipmentId.toString()) : null;
+        const shipment =
+          (v.currentShipmentId ? shipmentMap.get(v.currentShipmentId.toString()) : null) ||
+          activeShipmentByVehicle.get(v._id.toString()) ||
+          null;
         const gpsData = gpsLocationMap.get(v._id.toString());
 
         let coordinates: number[] | null = null;

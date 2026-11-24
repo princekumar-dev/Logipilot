@@ -13,6 +13,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const accessToken = useAuthStore((state) => state.accessToken);
   const [mounted, setMounted] = useState(false);
+  const [refreshAttempted, setRefreshAttempted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -20,7 +21,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   // Refresh access token on mount if authenticated but token is missing (page refresh)
   useEffect(() => {
-    if (mounted && isAuthenticated && !accessToken) {
+    if (mounted && isAuthenticated && !accessToken && !refreshAttempted) {
+      setRefreshAttempted(true);
       authService.refresh()
         .then((newToken) => {
           useAuthStore.getState().setAccessToken(newToken);
@@ -30,7 +32,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           router.replace('/login');
         });
     }
-  }, [mounted, isAuthenticated, accessToken, router]);
+  }, [mounted, isAuthenticated, accessToken, refreshAttempted, router]);
 
   const userRole = useAuthStore((state) => state.user?.role);
 

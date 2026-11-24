@@ -1,4 +1,4 @@
-const CACHE_PREFIX = 'logipilot:route:';
+const CACHE_PREFIX = 'logipilot:route:v2:';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const memoryCache = new Map<string, { lat: number; lng: number }[]>();
@@ -84,7 +84,15 @@ export async function getCachedRoute(
 
   const promise = fetcher(origin, destination)
     .then((routeData) => {
-      const path = routeData.polyline ? decodePolyline(routeData.polyline) : [origin, destination];
+      if (!routeData.polyline) {
+        inflightRequests.delete(key);
+        return [origin, destination];
+      }
+      const path = decodePolyline(routeData.polyline);
+      if (path.length < 2) {
+        inflightRequests.delete(key);
+        return [origin, destination];
+      }
       memoryCache.set(key, path);
       saveToStorage(key, path);
       inflightRequests.delete(key);
@@ -101,7 +109,7 @@ export async function getCachedRoute(
   return promise;
 }
 
-function decodePolyline(encoded: string): { lat: number; lng: number }[] {
+export function decodePolyline(encoded: string): { lat: number; lng: number }[] {
   const points: { lat: number; lng: number }[] = [];
   let index = 0;
   let lat = 0;
